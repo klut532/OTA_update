@@ -42,7 +42,7 @@ int* ordre = &tab2;
 #define eco 6
 #define hors_gel 12
 #define arret 8
-#define test 0.5
+
 
 #define ACTUATOR_PIN D7 // Do not use digital pins 0 or 1 since those conflict with the use of Serial.
 
