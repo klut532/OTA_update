@@ -11,6 +11,11 @@ C:\Users\tomas\OneDrive\Documents\Arduino\libraries\Cayenne-MQTT-ESP-master\src
 //#define CAYENNE_DEBUG
 #define CAYENNE_PRINT Serial
 #define slaveAddress 0x08   // N.B. I2C 7-bit addresses can only be in the range of 0x08 -> 0x77
+#define confort 10
+#define eco 6
+#define hors_gel 12
+#define arret 8
+#define reset_demand 13
 
 // WiFi network info.
 
@@ -35,16 +40,16 @@ int i;
 int value;
 int* value_Ptr = &value;
 int tab;
-int tab2 = 8;
+int tab2 = arret;
 int* ordre = &tab2;
+float temp[2];
 
-#define confort 10
-#define eco 6
-#define hors_gel 12
-#define arret 8
+
 
 
 #define ACTUATOR_PIN D7 // Do not use digital pins 0 or 1 since those conflict with the use of Serial.
+
+void(* resetFunc) (void) = 0;
 
 void setup() {
   
@@ -65,12 +70,11 @@ void loop() {
 
 CAYENNE_OUT_DEFAULT()
 {
-  float temp[2];
-  delay(500);
+  //delay(500);
   Wire.requestFrom(slaveAddress, sizeof temp);
   wireReadData(temp);
-  Serial.println((float)temp[0]);
-  Serial.println((float)temp[1]);
+  Serial.println(temp[0]);
+  Serial.println(temp[1]);
   Cayenne.celsiusWrite(1, temp[0]);
   Cayenne.celsiusWrite(4, temp[1]);
 }
@@ -165,4 +169,10 @@ CAYENNE_IN(arret)
   Wire.write(tab);
   Wire.endTransmission(slaveAddress);
   reset_boutons(tab);
+}
+
+CAYENNE_IN(reset_demand)
+{
+  Serial.print("Reset en cours ...");
+  resetFunc();
 }
