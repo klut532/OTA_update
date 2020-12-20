@@ -1,0 +1,6 @@
+# depslib dependency file v1.0
+1577264713 source:c:\users\tomas\onedrive\bureau\projets\electronique\carte radiateur\programme\test pointeur\main.c
+	<stdio.h>
+	<stdlib.h>
+	<windows.h>
+
