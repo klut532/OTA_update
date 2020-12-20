@@ -1,6 +1,5 @@
 /*les librairies sont à
 C:\Users\tomas\OneDrive\Documents\Arduino\libraries\Cayenne-MQTT-ESP-master\src
-
 */
 
 #include <CayenneMQTTESP8266.h>
@@ -10,12 +9,17 @@ C:\Users\tomas\OneDrive\Documents\Arduino\libraries\Cayenne-MQTT-ESP-master\src
 
 //#define CAYENNE_DEBUG
 #define CAYENNE_PRINT Serial
+#define ACTUATOR_PIN D7 // Do not use digital pins 0 or 1 since those conflict with the use of Serial.
 #define slaveAddress 0x08   // N.B. I2C 7-bit addresses can only be in the range of 0x08 -> 0x77
 #define confort 10
 #define eco 6
 #define hors_gel 12
 #define arret 8
 #define reset_demand 13
+#define temp_consigne_channel 14
+#define RESET 0
+#define SET 1
+#define t_mesuree temp[1]
 
 // WiFi network info.
 
@@ -43,13 +47,16 @@ int tab;
 int tab2 = arret;
 int* ordre = &tab2;
 float temp[2];
+int temp_consigne;
 
-
-
-
-#define ACTUATOR_PIN D7 // Do not use digital pins 0 or 1 since those conflict with the use of Serial.
 
 void(* resetFunc) (void) = 0;
+void lancer_chauffage(void);
+void arret_chauffage(void);
+void init_variables (void);
+void LancerMesure();
+void reset_boutons(int ordre);
+
 
 void setup() {
   
@@ -58,6 +65,7 @@ void setup() {
   Cayenne.begin(username, password, clientID, ssid, wifiPassword);
   pinMode(ACTUATOR_PIN, OUTPUT);
   delay(1000);
+  init_variables();
 }
 
 
@@ -75,47 +83,46 @@ CAYENNE_OUT_DEFAULT()
   wireReadData(temp);
   Serial.println(temp[0]);
   Serial.println(temp[1]);
+  Serial.println(temp_consigne);
   Cayenne.celsiusWrite(1, temp[0]);
   Cayenne.celsiusWrite(4, temp[1]);
 }
 
-void LancerMesure()
-{
+void LancerMesure(){
   float data[2];
   Wire.beginTransmission(slaveAddress);
   wireWriteData(data);
   Wire.endTransmission();
 }
 
-void reset_boutons(int ordre)
-{
+void reset_boutons(int ordre){
   if (ordre == confort)
   {
     //Cayenne.virtualWrite(confort, 1);
-    Cayenne.virtualWrite(eco, 0);
-    Cayenne.virtualWrite(hors_gel, 0);
-    Cayenne.virtualWrite(arret, 0);
+    Cayenne.virtualWrite(eco, RESET);
+    Cayenne.virtualWrite(hors_gel, RESET);
+    Cayenne.virtualWrite(arret, RESET);
   }
   else if (ordre == eco)
   {
     //Cayenne.virtualWrite(eco, 1);
-    Cayenne.virtualWrite(confort, 0);
-    Cayenne.virtualWrite(hors_gel, 0);
-    Cayenne.virtualWrite(arret, 0);
+    Cayenne.virtualWrite(confort, RESET);
+    Cayenne.virtualWrite(hors_gel, RESET);
+    Cayenne.virtualWrite(arret, RESET);
   }
   else if (ordre == hors_gel)
   {
     //Cayenne.virtualWrite(hors_gel, 1);
-    Cayenne.virtualWrite(eco, 0);
-    Cayenne.virtualWrite(confort, 0);
-    Cayenne.virtualWrite(arret, 0);
+    Cayenne.virtualWrite(eco, RESET);
+    Cayenne.virtualWrite(confort, RESET);
+    Cayenne.virtualWrite(arret, RESET);
   }
   else if (ordre == arret)
   {
     //Cayenne.virtualWrite(arret, 1);
-    Cayenne.virtualWrite(eco, 0);
-    Cayenne.virtualWrite(hors_gel, 0);
-    Cayenne.virtualWrite(confort, 0);
+    Cayenne.virtualWrite(eco, RESET);
+    Cayenne.virtualWrite(hors_gel, RESET);
+    Cayenne.virtualWrite(confort, RESET);
   }
 }
 
@@ -175,4 +182,33 @@ CAYENNE_IN(reset_demand)
 {
   Serial.print("Reset en cours ...");
   resetFunc();
+}
+
+CAYENNE_IN(temp_consigne_channel)
+{
+  CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asString());
+  temp_consigne = (int) getValue.asInt();
+  Serial.print("Température de consigne : ");
+  Serial.println(temp_consigne);
+  Serial.print("Température de Mesurée : ");
+  Serial.println(t_mesuree);
+  if (temp_consigne <= t_mesuree){
+    arret_chauffage();
+  }
+  else if (t_mesuree <= temp_consigne){
+    lancer_chauffage();
+  }
+  
+}
+
+void lancer_chauffage(void){
+  Serial.println("Chauffage lancé");
+}
+
+void arret_chauffage(void){
+  Serial.println("Chauffage arrêté");
+}
+
+void init_variables (void){
+ CAYENNE_OUT(temp_consigne_channel);
 }
