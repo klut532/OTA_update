@@ -17,6 +17,7 @@ C:\Users\tomas\OneDrive\Documents\Arduino\libraries\Cayenne-MQTT-ESP-master\src
 #define arret 8
 #define reset_demand 13
 #define temp_consigne_channel 14
+#define consigne_activation_channel 15
 #define RESET 0
 #define SET 1
 #define t_mesuree temp[1]
@@ -39,23 +40,22 @@ char* password = "9a3c28484ddf8e815a2c5b8cdf5aaff5b0a98982";
 //chauffage 2
 char* clientID = "2b97d880-eda1-11e9-a38a-d57172a4b4d4";
 
-unsigned long lastMillis = 0;
-int i;
-int value;
-int* value_Ptr = &value;
-int tab;
-int tab2 = arret;
-int* ordre = &tab2;
+
+int ordre = arret;
 float temp[2];
 int temp_consigne;
+bool consigne_enable;
+int ordre_state;
 
 
 void(* resetFunc) (void) = 0;
-void lancer_chauffage(void);
-void arret_chauffage(void);
-void init_variables (void);
+void lancer_chauffage(int ordre);
+void arret_chauffage(int ordre);
+void init_function (void);
 void LancerMesure();
 void reset_boutons(int ordre);
+void envoi_ordre_arduino (void);
+void gestion_chauffe_consigne (void);
 
 
 void setup() {
@@ -65,14 +65,16 @@ void setup() {
   Cayenne.begin(username, password, clientID, ssid, wifiPassword);
   pinMode(ACTUATOR_PIN, OUTPUT);
   delay(1000);
-  init_variables();
+  init_function();
 }
 
 
 void loop() {
   Cayenne.loop();
-  int* value_Ptr = &value;
-  *ordre = tab2;
+  
+  if (consigne_enable == SET){
+    gestion_chauffe_consigne();
+  }
 }
 
 
@@ -81,9 +83,6 @@ CAYENNE_OUT_DEFAULT()
   //delay(500);
   Wire.requestFrom(slaveAddress, sizeof temp);
   wireReadData(temp);
-  Serial.println(temp[0]);
-  Serial.println(temp[1]);
-  Serial.println(temp_consigne);
   Cayenne.celsiusWrite(1, temp[0]);
   Cayenne.celsiusWrite(4, temp[1]);
 }
@@ -92,95 +91,94 @@ void LancerMesure(){
   float data[2];
   Wire.beginTransmission(slaveAddress);
   wireWriteData(data);
-  Wire.endTransmission();
+  Wire.endTransmission(slaveAddress);
 }
 
-void reset_boutons(int ordre){
-  if (ordre == confort)
+void reset_boutons(void){
+  if (ordre_state == confort)
   {
     //Cayenne.virtualWrite(confort, 1);
     Cayenne.virtualWrite(eco, RESET);
     Cayenne.virtualWrite(hors_gel, RESET);
     Cayenne.virtualWrite(arret, RESET);
+    Cayenne.virtualWrite(consigne_activation_channel, RESET);
+    consigne_enable = RESET;
   }
-  else if (ordre == eco)
+  else if (ordre_state == eco)
   {
     //Cayenne.virtualWrite(eco, 1);
     Cayenne.virtualWrite(confort, RESET);
     Cayenne.virtualWrite(hors_gel, RESET);
     Cayenne.virtualWrite(arret, RESET);
+    Cayenne.virtualWrite(consigne_activation_channel, RESET);
+    consigne_enable = RESET;
   }
-  else if (ordre == hors_gel)
+  else if (ordre_state == hors_gel)
   {
     //Cayenne.virtualWrite(hors_gel, 1);
     Cayenne.virtualWrite(eco, RESET);
     Cayenne.virtualWrite(confort, RESET);
     Cayenne.virtualWrite(arret, RESET);
+    Cayenne.virtualWrite(consigne_activation_channel, RESET);
+    consigne_enable = RESET;
   }
-  else if (ordre == arret)
+  else if (ordre_state == arret)
   {
-    //Cayenne.virtualWrite(arret, 1);
+    Cayenne.virtualWrite(arret, 1);
     Cayenne.virtualWrite(eco, RESET);
     Cayenne.virtualWrite(hors_gel, RESET);
     Cayenne.virtualWrite(confort, RESET);
+    Cayenne.virtualWrite(consigne_activation_channel, RESET);
+    consigne_enable = RESET;
+  }
+  else if (ordre_state == consigne_activation_channel)
+  {
+    Cayenne.virtualWrite(eco, RESET);
+    Cayenne.virtualWrite(hors_gel, RESET);
+    Cayenne.virtualWrite(confort, RESET);
+    Cayenne.virtualWrite(arret, RESET);
   }
 }
 
 CAYENNE_IN(confort)
 {
   CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asString());
-  int tab = confort;
-  Serial.print("ordre Confort : ");
-  Serial.println(tab);
-  *ordre = tab;
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(tab);
-  Wire.endTransmission(slaveAddress);
-  reset_boutons(tab);
+  Serial.println("ordre Confort");
+  ordre_state = confort;
+  envoi_ordre_arduino(confort);
+  reset_boutons();
 }
 
 CAYENNE_IN(eco)
 {
   CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asString());
-  int tab = eco;
-  Serial.print("Eco : ");
-  Serial.println(tab);
-  *ordre = tab;
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(tab);
-  Wire.endTransmission(slaveAddress);
-  reset_boutons(tab);
+  Serial.println("ordre Eco");
+  ordre_state = eco;
+  envoi_ordre_arduino(eco);
+  reset_boutons();
 }
 
 CAYENNE_IN(hors_gel)
 {
   CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asString());
-  int tab = hors_gel;
-  Serial.print("Hors Gel : ");
-  Serial.println(tab);
-  *ordre = tab;
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(tab);
-  Wire.endTransmission(slaveAddress);
-  reset_boutons(tab);
+  Serial.println("ordre Hors Gel");
+  ordre_state = hors_gel;
+  envoi_ordre_arduino(hors_gel);
+  reset_boutons();
 }
 
 CAYENNE_IN(arret)
 {
   CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asString());
-  int tab = arret;
-  Serial.print("Arret : ");
-  Serial.println(tab);
-  *ordre = tab;
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(tab);
-  Wire.endTransmission(slaveAddress);
-  reset_boutons(tab);
+  Serial.println("ordre Arret");
+  ordre_state = arret;
+  envoi_ordre_arduino(arret);
+  reset_boutons();
 }
 
 CAYENNE_IN(reset_demand)
 {
-  Serial.print("Reset en cours ...");
+  Serial.println("Reset en cours ...");
   resetFunc();
 }
 
@@ -188,27 +186,61 @@ CAYENNE_IN(temp_consigne_channel)
 {
   CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asString());
   temp_consigne = (int) getValue.asInt();
+  ordre_state = temp_consigne_channel;
   Serial.print("Température de consigne : ");
   Serial.println(temp_consigne);
-  Serial.print("Température de Mesurée : ");
-  Serial.println(t_mesuree);
-  if (temp_consigne <= t_mesuree){
-    arret_chauffage();
+  reset_boutons();
+}
+
+CAYENNE_IN(consigne_activation_channel)
+{
+  CAYENNE_LOG("Channel %u, value %s", request.channel, getValue.asInt());
+  consigne_enable = (int) getValue.asInt();
+  if (consigne_enable == SET){
+    Serial.println("Consigne activée");
   }
-  else if (t_mesuree <= temp_consigne){
-    lancer_chauffage();
+  else if (consigne_enable == RESET){
+    Serial.println("Consigne désactivée");
   }
-  
 }
 
-void lancer_chauffage(void){
-  Serial.println("Chauffage lancé");
+void lancer_chauffage(int ordre){
+  if (confort != ordre){
+    Serial.println("Chauffage lancé");
+    envoi_ordre_arduino(confort);
+    ordre_state = confort;
+  }
 }
 
-void arret_chauffage(void){
-  Serial.println("Chauffage arrêté");
+void arret_chauffage(int ordre){
+  if (arret != ordre){
+    Serial.println("Chauffage arrêté");
+    envoi_ordre_arduino(arret);
+    ordre_state = arret;
+  }
 }
 
-void init_variables (void){
- CAYENNE_OUT(temp_consigne_channel);
+void init_function (void){
+  Serial.println("Lancement ...");
+  ordre_state = arret;
+  temp_consigne = 9;
+  consigne_enable = 0;
+  Cayenne.virtualWrite(temp_consigne_channel, temp_consigne);
+  reset_boutons();
+  Serial.println("Init ... done");
+}
+
+void envoi_ordre_arduino(int ordre){
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(ordre);
+  Wire.endTransmission(slaveAddress);
+}
+
+void gestion_chauffe_consigne (void){
+    if (temp_consigne <= t_mesuree){
+      arret_chauffage(ordre_state);
+    }
+    else if (temp_consigne >= t_mesuree){
+      lancer_chauffage(ordre_state);
+    }
 }
