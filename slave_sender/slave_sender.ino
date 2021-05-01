@@ -1,8 +1,6 @@
 #include <Wire.h>
 #include <WireData.h>
 #include <DS18B20.h>
-#include <EEPROM.h>
-#include <math.h>
 #include <movingAvg.h>
 
 #define optoC1 2
@@ -11,15 +9,16 @@
 #define eco 6
 #define hors_gel 12
 #define arret 8
+#define longueur_moyenne_glissante 10
+#define adresse  0x08
 
-char adresse  = 0x08;
-int addr_EEPROM = 0;
-float temperature, t, temp;
+//#define debug
+
+
+uint16_t i16MesureCTN_value;
+float temperature;
 float* temperaturePtr = &temperature;
-float* tempPtr = &temp;
-int recu = 8;
-int* ordre = &recu;
-char longueur_moyenne_glissante = 10;
+uint16_t* pi16MesureCTN_value = &i16MesureCTN_value;
 movingAvg mv_avg(longueur_moyenne_glissante);
 
 void requestEvent();
@@ -28,8 +27,8 @@ void ordre_eco();
 void ordre_hors_gel();
 void ordre_arret();
 int mesure_DS18B20();
-float mesure_CTN();
-void attribut_ordre(int ordre);
+uint16_t mesure_CTN();
+void attribut_ordre(int u8Ordre);
 
 
 void setup() {
@@ -41,58 +40,71 @@ void setup() {
   pinMode(BROCHE_DS18B20, INPUT);
   pinMode(optoC1, OUTPUT);
   pinMode(optoC2, OUTPUT);
-  recu = chaine_en_memoire();
   movingAvg mv_avg(10);
 }
 
 void loop() {
   mesure_DS18B20();
-  temp = mesure_CTN();
+  i16MesureCTN_value = mesure_CTN();
   float* temperaturePtr = &temperature;
-  float* tempPtr = &temp;
-  Serial.println(*temperaturePtr);
-  //Serial.print("temp loop : ");
-  Serial.println(*tempPtr);
-  *ordre = recu;
-  attribut_ordre (*ordre);
+  uint16_t* pi16MesureCTN_value = &i16MesureCTN_value;
 }
 
-void attribut_ordre (int ordre){
-  if (ordre == confort){
+void attribut_ordre (uint8_t u8Ordre){
+  if (u8Ordre == confort){
     ordre_confort();
+    #ifdef debug_ordre
+      Serial.println("confort");
+    #endif
   }
-  else if (ordre == eco){
+  else if (u8Ordre == eco){
     ordre_eco();
+    #ifdef debug_ordre
+      Serial.println("eco");
+    #endif
   }
-  else if (ordre == hors_gel){
+  else if (u8Ordre == hors_gel){
     ordre_hors_gel();
+    #ifdef debug_ordre
+      Serial.println("hors gel");
+    #endif
   }
-  else if  (ordre == arret){
+  else if  (u8Ordre == arret){
     ordre_arret();
+    #ifdef debug_ordre
+      Serial.println("arret");
+    #endif
+  }  
+  else{//cas d'erreur 
+    u8Ordre = hors_gel;
+    ordre_hors_gel();
+    #ifdef debug
+      Serial.println("Cas d'erreur ordre");
+    #endif
   }
 }
 
-void ordre_confort(){
+void ordre_confort(void){
   digitalWrite(optoC1,0);
   digitalWrite(optoC2,0);
 }
 
-void ordre_eco(){
+void ordre_eco(void){
   digitalWrite(optoC1,1);
   digitalWrite(optoC2,1);
 }
 
-void ordre_hors_gel(){ //demi alternance négative
+void ordre_hors_gel(void){ //demi alternance négative
   digitalWrite(optoC1,1);
   digitalWrite(optoC2,0);
 }
 
-void ordre_arret(){ //demi alternance positive
+void ordre_arret(void){ //demi alternance positive
   digitalWrite(optoC1,0);
   digitalWrite(optoC2,1);
 }
 
-int mesure_DS18B20()
+int mesure_DS18B20(void)
 {
   if (getTemperature(&temperature, true) != READ_OK) {
     //Serial.println(F("Erreur de lecture du capteur"));
@@ -100,39 +112,37 @@ int mesure_DS18B20()
   }
 }
 
-void i2cReceive (int howMany) 
+void i2cReceive (uint8_t u8Received, uint8_t * pu8Ordre) 
 {
-  int x = Wire.read();    // receive byte as an integer
-  Serial.print("ordre : ");
-  Serial.println(x);         // print the integer
-  *ordre = x;
-  EEPROM.write(addr_EEPROM, x);
+  u8Received = Wire.read();    // receive byte as an integer
+  attribut_ordre(u8Received);
+  
+  #ifdef debug_I2C
+    Serial.print("Ordre : ");
+    Serial.println(u8Received);
+  #endif
 }
 
+/* Retourne les temperatures */
 void requestEvent(){
-  float t[2] = {*temperaturePtr, *tempPtr};
-  wireWriteData(t);
-  //Serial.println(t[1]);
-  //retourne les temperatures;
+  float t = *temperaturePtr;
+  uint16_t i16MesureCTN_value = *pi16MesureCTN_value;
+  wireWriteData(t);  
+  Wire.write( (byte) ((i16MesureCTN_value>>8)) );
+  Wire.write( (byte) (i16MesureCTN_value) );
+  
+  #ifdef debug_temp
+    Serial.print(t);
+    Serial.print(" , ");
+    Serial.println(i16MesureCTN_value);
+  #endif
 }
 
-int chaine_en_memoire ()
-{
-  int recu = EEPROM.read(addr_EEPROM);
-  //Serial.println(recu);
-  return recu;
-}
-
-float mesure_CTN()
-{
-  const long Rr = 100000;
-  int avg = mv_avg.reading(analogRead(1));
-  float Ur =  avg/1024.*5;
-  float Rctn = Rr*(5/Ur-1);
-  //CTN Câble HP
-  float temp = (log(Rctn) - 12.617)/-0.043718;
-   // CTN Câble mesure
-  //float temp = (log(Rctn) - 12.649)/-0.044616;
-  Serial.println(temp);
-  return temp;
+uint16_t mesure_CTN(void){
+  uint16_t avg = mv_avg.reading(analogRead(1));
+  
+  #ifdef debug_CTN
+    Serial.println(avg);
+  #endif
+  return avg;
 }
